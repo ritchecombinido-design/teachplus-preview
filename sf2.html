@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SF2 – Daily Attendance | TeachPlus</title>
+<script src="dexie.js"></script>
+<link rel="stylesheet" href="fontawesome/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<script src="exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ── SF2 EXTENDED STYLES ── */
+:root {
+  --sf2-header-h: 64px;
+}
+
+.sf2-layout {
+display: flex;
+min-height: 100vh;
+background: var(–bg);
+position: relative;
+z-index: 2;
+}
+
+/* ── TOPBAR ── */
+.sf2-topbar {
+height: var(–sf2-header-h);
+background: var(–surface);
+border-bottom: 1px solid var(–border);
+display: flex;
+align-items: center;
+padding: 0 24px;
+gap: 14px;
+position: sticky;
+top: 0;
+z-index: 100;
+box-shadow: 0 1px 6px rgba(0,0,0,.06);
+}
+
+.sf2-back-btn {
+display: flex;
+align-items: center;
+gap: 8px;
+background: var(–surface2);
+border: 1px solid var(–border);
+border-radius: 10px;
+padding: 8px 14px;
+cursor: pointer;
+color: var(–text2);
+font-size: .82rem;
+font-weight: 600;
+transition: all .2s;
+font-family: var(–font);
+}
+.sf2-back-btn:hover { background: var(–border); color: var(–text); }
+
+.sf2-topbar-title {
+font-family: var(–font-display);
+font-size: 1.1rem;
+color: var(–text);
+flex: 1;
+}
+.sf2-topbar-title span { color: var(–accent); }
+
+.sf2-topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+/* ── MAIN LAYOUT ── */
+.sf2-main {
+flex: 1;
+display: flex;
+flex-direction: column;
+min-height: 0;
+}
+
+.sf2-content {
+flex: 1;
+padding: 28px;
+max-width: 1500px;
+width: 100%;
+margin: 0 auto;
+}
+
+/* ── FILTER BAR ── */
+.sf2-filter-bar {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 16px;
+padding: 20px 24px;
+display: flex;
+flex-wrap: wrap;
+gap: 14px;
+align-items: flex-end;
+margin-bottom: 24px;
+box-shadow: var(–card-shadow);
+}
+
+.sf2-filter-group {
+display: flex;
+flex-direction: column;
+gap: 6px;
+}
+
+.sf2-filter-group label {
+font-size: .72rem;
+font-weight: 600;
+color: var(–text3);
+text-transform: uppercase;
+letter-spacing: .07em;
+}
+
+.sf2-select, .sf2-input {
+background: var(–surface2);
+border: 1px solid var(–border);
+border-radius: 10px;
+padding: 9px 13px;
+color: var(–text);
+font-family: var(–font);
+font-size: .85rem;
+min-width: 140px;
+transition: border-color .2s;
+outline: none;
+}
+.sf2-select:focus, .sf2-input:focus { border-color: var(–accent); }
+
+.sf2-load-btn {
+background: var(–accent);
+color: #fff;
+border: none;
+border-radius: 10px;
+padding: 9px 20px;
+font-family: var(–font);
+font-size: .85rem;
+font-weight: 600;
+cursor: pointer;
+display: flex;
+align-items: center;
+gap: 8px;
+transition: opacity .2s, transform .2s;
+white-space: nowrap;
+}
+.sf2-load-btn:hover { opacity: .88; transform: translateY(-1px); }
+
+/* ── STAT CARDS ── */
+.sf2-stats-row {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+gap: 14px;
+margin-bottom: 24px;
+}
+
+.sf2-stat {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 14px;
+padding: 18px 16px;
+box-shadow: var(–card-shadow);
+display: flex;
+flex-direction: column;
+gap: 6px;
+position: relative;
+overflow: hidden;
+}
+
+.sf2-stat::before {
+content: ‘’;
+position: absolute;
+top: 0; left: 0; right: 0;
+height: 3px;
+background: var(–stat-color, var(–accent));
+}
+
+.sf2-stat-icon {
+width: 34px; height: 34px;
+border-radius: 8px;
+display: flex; align-items: center; justify-content: center;
+font-size: 15px;
+background: var(–stat-bg, rgba(37,99,235,.1));
+color: var(–stat-color, var(–accent));
+margin-bottom: 2px;
+}
+
+.sf2-stat-val {
+font-size: 1.6rem;
+font-weight: 700;
+color: var(–text);
+line-height: 1;
+}
+
+.sf2-stat-label {
+font-size: .72rem;
+color: var(–text3);
+font-weight: 500;
+}
+
+/* ── CHARTS SECTION ── */
+.sf2-charts-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 20px;
+margin-bottom: 24px;
+}
+
+.sf2-chart-card {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 16px;
+padding: 22px;
+box-shadow: var(–card-shadow);
+}
+
+.sf2-chart-title {
+font-size: .88rem;
+font-weight: 700;
+color: var(–text);
+margin-bottom: 16px;
+display: flex;
+align-items: center;
+gap: 8px;
+}
+
+.sf2-chart-title i { color: var(–accent); }
+
+.sf2-chart-wrap {
+position: relative;
+height: 220px;
+}
+
+/* ── TABLE SECTION ── */
+.sf2-table-card {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 16px;
+padding: 22px;
+box-shadow: var(–card-shadow);
+margin-bottom: 24px;
+overflow-x: auto;
+}
+
+.sf2-section-heading {
+font-size: .88rem;
+font-weight: 700;
+color: var(–text);
+margin-bottom: 16px;
+display: flex;
+align-items: center;
+gap: 8px;
+padding-bottom: 12px;
+border-bottom: 1px solid var(–border);
+}
+
+.sf2-section-heading i { color: var(–accent); }
+
+.sf2-table {
+width: 100%;
+border-collapse: collapse;
+font-size: .8rem;
+}
+
+.sf2-table th {
+background: var(–surface2);
+padding: 10px 12px;
+text-align: left;
+font-weight: 700;
+font-size: .72rem;
+color: var(–text2);
+text-transform: uppercase;
+letter-spacing: .06em;
+position: sticky;
+top: 0;
+}
+
+.sf2-table td {
+padding: 9px 12px;
+border-bottom: 1px solid var(–border);
+color: var(–text);
+vertical-align: middle;
+}
+
+.sf2-table tr:last-child td { border-bottom: none; }
+.sf2-table tr:hover td { background: var(–surface2); }
+
+.sf2-badge {
+display: inline-flex;
+align-items: center;
+gap: 4px;
+padding: 3px 9px;
+border-radius: 20px;
+font-size: .7rem;
+font-weight: 600;
+}
+
+.badge-present { background: rgba(13,148,136,.12); color: var(–green); }
+.badge-absent  { background: rgba(225,29,72,.12);  color: var(–rose);  }
+.badge-late    { background: rgba(217,119,6,.12);  color: var(–amber); }
+.badge-cutting { background: rgba(124,58,237,.12); color: var(–purple);}
+.badge-male    { background: rgba(37,99,235,.1);   color: var(–accent);}
+.badge-female  { background: rgba(225,29,72,.08);  color: #db2777; }
+
+/* attendance indicator */
+.att-dot {
+width: 10px; height: 10px;
+border-radius: 50%;
+display: inline-block;
+}
+.att-dot.present { background: var(–green); }
+.att-dot.absent  { background: var(–rose); }
+.att-dot.late    { background: var(–amber); }
+.att-dot.cutting { background: var(–purple); }
+
+/* ── PROGRESS BAR ── */
+.sf2-progress-bar {
+height: 6px;
+background: var(–surface2);
+border-radius: 3px;
+overflow: hidden;
+margin-top: 4px;
+}
+.sf2-progress-fill {
+height: 100%;
+border-radius: 3px;
+background: var(–accent);
+transition: width .5s ease;
+}
+.sf2-progress-fill.green { background: var(–green); }
+.sf2-progress-fill.amber { background: var(–amber); }
+.sf2-progress-fill.rose  { background: var(–rose);  }
+
+/* ── RISK TABLE ── */
+.sf2-risk-badge {
+padding: 2px 10px;
+border-radius: 20px;
+font-size: .7rem;
+font-weight: 700;
+}
+.risk-high    { background: rgba(225,29,72,.12);  color: var(–rose);  }
+.risk-medium  { background: rgba(217,119,6,.12);  color: var(–amber); }
+.risk-low     { background: rgba(13,148,136,.12); color: var(–green); }
+
+/* ── EXPORT SECTION ── */
+.sf2-export-bar {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 16px;
+padding: 20px 24px;
+display: flex;
+flex-wrap: wrap;
+gap: 12px;
+align-items: center;
+margin-bottom: 24px;
+box-shadow: var(–card-shadow);
+}
+
+.sf2-export-info {
+flex: 1;
+min-width: 220px;
+}
+
+.sf2-export-info h3 {
+font-size: .95rem;
+font-weight: 700;
+color: var(–text);
+margin-bottom: 3px;
+}
+
+.sf2-export-info p {
+font-size: .78rem;
+color: var(–text3);
+}
+
+.sf2-export-btn {
+display: flex;
+align-items: center;
+gap: 8px;
+padding: 10px 20px;
+border-radius: 10px;
+border: none;
+font-family: var(–font);
+font-size: .85rem;
+font-weight: 600;
+cursor: pointer;
+transition: all .2s;
+}
+
+.sf2-export-btn.primary {
+background: var(–accent);
+color: #fff;
+}
+.sf2-export-btn.primary:hover { opacity: .88; transform: translateY(-1px); }
+
+.sf2-export-btn.secondary {
+background: var(–surface2);
+border: 1px solid var(–border);
+color: var(–text);
+}
+.sf2-export-btn.secondary:hover { background: var(–border); }
+
+.sf2-export-btn.pdf-btn {
+background: rgba(225,29,72,.1);
+border: 1px solid rgba(225,29,72,.2);
+color: var(–rose);
+}
+.sf2-export-btn.pdf-btn:hover { background: rgba(225,29,72,.18); }
+
+.sf2-ready-badge {
+display: inline-flex;
+align-items: center;
+gap: 6px;
+background: rgba(13,148,136,.1);
+border: 1px solid rgba(13,148,136,.2);
+color: var(–green);
+padding: 6px 14px;
+border-radius: 20px;
+font-size: .8rem;
+font-weight: 600;
+}
+
+/* ── EMPTY STATE ── */
+.sf2-empty {
+text-align: center;
+padding: 64px 24px;
+color: var(–text3);
+}
+.sf2-empty i { font-size: 3rem; margin-bottom: 16px; display: block; opacity: .4; }
+.sf2-empty h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; color: var(–text2); }
+.sf2-empty p { font-size: .85rem; }
+
+/* ── TOAST ── */
+.sf2-toast-container {
+position: fixed;
+bottom: 28px;
+right: 28px;
+z-index: 9999;
+display: flex;
+flex-direction: column;
+gap: 10px;
+pointer-events: none;
+}
+
+.sf2-toast {
+background: var(–text);
+color: var(–surface);
+padding: 13px 18px;
+border-radius: 12px;
+font-size: .84rem;
+font-weight: 500;
+display: flex;
+align-items: center;
+gap: 10px;
+box-shadow: 0 6px 24px rgba(0,0,0,.25);
+animation: sfSlideUp .3s ease;
+pointer-events: auto;
+max-width: 340px;
+}
+.sf2-toast.success { border-left: 3px solid var(–green); }
+.sf2-toast.error   { border-left: 3px solid var(–rose); }
+.sf2-toast.info    { border-left: 3px solid var(–accent); }
+.sf2-toast.out { opacity: 0; transition: opacity .3s; }
+
+@keyframes sfSlideUp {
+from { transform: translateY(20px); opacity: 0; }
+to { transform: none; opacity: 1; }
+}
+
+/* ── CONSECUTIVE ABSENT TABLE ── */
+.sf2-consec-table {
+width: 100%;
+border-collapse: collapse;
+font-size: .8rem;
+}
+.sf2-consec-table th {
+background: rgba(225,29,72,.07);
+padding: 9px 12px;
+text-align: left;
+font-weight: 700;
+font-size: .72rem;
+color: var(–rose);
+text-transform: uppercase;
+letter-spacing: .06em;
+}
+.sf2-consec-table td {
+padding: 8px 12px;
+border-bottom: 1px solid var(–border);
+color: var(–text);
+}
+.sf2-consec-table tr:last-child td { border-bottom: none; }
+
+/* ── SUMMARY GRID ── */
+.sf2-summary-grid {
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 14px;
+margin-bottom: 24px;
+}
+
+.sf2-summary-card {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 14px;
+padding: 18px;
+box-shadow: var(–card-shadow);
+}
+
+.sf2-summary-card h4 {
+font-size: .78rem;
+font-weight: 700;
+color: var(–text3);
+text-transform: uppercase;
+letter-spacing: .07em;
+margin-bottom: 12px;
+display: flex;
+align-items: center;
+gap: 7px;
+}
+
+.sf2-summary-row {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 6px 0;
+border-bottom: 1px solid var(–border);
+font-size: .82rem;
+}
+
+.sf2-summary-row:last-child { border-bottom: none; }
+.sf2-summary-row .label { color: var(–text2); }
+.sf2-summary-row .value { font-weight: 700; color: var(–text); }
+.sf2-summary-row .pct { font-size: .7rem; color: var(–text3); }
+
+/* ── LOADING SPINNER ── */
+.sf2-loading {
+display: flex;
+align-items: center;
+justify-content: center;
+gap: 12px;
+padding: 48px;
+color: var(–text3);
+font-size: .88rem;
+}
+.sf2-spinner {
+width: 24px; height: 24px;
+border: 3px solid var(–border);
+border-top-color: var(–accent);
+border-radius: 50%;
+animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── WEEKLY HEATMAP ── */
+.heatmap-wrap { overflow-x: auto; }
+.heatmap-grid {
+display: grid;
+grid-auto-columns: 1fr;
+grid-auto-flow: column;
+gap: 4px;
+min-width: 600px;
+}
+.heatmap-col { display: flex; flex-direction: column; gap: 4px; }
+.heatmap-label {
+font-size: .67rem;
+color: var(–text3);
+text-align: center;
+padding-bottom: 2px;
+font-weight: 600;
+text-transform: uppercase;
+}
+.heatmap-cell {
+height: 28px;
+border-radius: 5px;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: .67rem;
+font-weight: 700;
+color: #fff;
+transition: transform .15s;
+cursor: default;
+}
+.heatmap-cell:hover { transform: scale(1.08); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1100px) {
+.sf2-charts-grid { grid-template-columns: 1fr; }
+.sf2-summary-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 768px) {
+.sf2-content { padding: 16px; }
+.sf2-stats-row { grid-template-columns: repeat(2, 1fr); }
+.sf2-summary-grid { grid-template-columns: 1fr; }
+.sf2-filter-bar { flex-direction: column; align-items: stretch; }
+.sf2-select, .sf2-input { min-width: unset; width: 100%; }
+}
+</style>
+
+</head>
+<body>
+
+<div id="themeBackground" aria-hidden="true">
+  <div class="bg-icon bg-xl bg-top-left"><i class="fas fa-list-ol" style="color:var(--accent)"></i></div>
+  <div class="bg-icon bg-sm bg-top-right"><i class="fas fa-chart-bar" style="color:var(--accent)"></i></div>
+  <div class="bg-icon bg-sm bg-bottom-left"><i class="fas fa-users" style="color:var(--accent)"></i></div>
+  <div class="bg-icon bg-xl bg-bottom-right"><i class="fas fa-clipboard-check" style="color:var(--accent)"></i></div>
+</div>
+
+<div class="sf2-layout">
+  <div class="sf2-main">
+
+```
+<!-- TOPBAR -->
+<header class="sf2-topbar">
+  <button class="sf2-back-btn" onclick="window.location.href='index.html'">
+    <i class="fas fa-arrow-left"></i> Dashboard
+  </button>
+  <div class="sf2-topbar-title">
+    SF2 – <span>Daily Attendance</span> Register
+  </div>
+  <div class="sf2-topbar-actions">
+    <div id="exportReadyBadge" class="sf2-ready-badge" style="display:none;">
+      <i class="fas fa-check-circle"></i> SF2 Ready to Export
+    </div>
+    <button class="sf2-export-btn primary" onclick="exportToXLSX()" id="exportXlsxBtn" style="display:none;">
+      <i class="fas fa-file-excel"></i> Export XLSX
+    </button>
+    <button class="sf2-export-btn pdf-btn" onclick="exportToPDF()" id="exportPdfBtn" style="display:none;">
+      <i class="fas fa-file-pdf"></i> Export PDF
+    </button>
+  </div>
+</header>
+
+<!-- CONTENT -->
+<main class="sf2-content">
+
+  <!-- FILTER BAR -->
+  <div class="sf2-filter-bar">
+    <div class="sf2-filter-group">
+      <label><i class="fas fa-graduation-cap"></i> Grade Level</label>
+      <select class="sf2-select" id="sf2-grade" onchange="updateSF2Sections()">
+        <option value="">Select Grade</option>
+      </select>
+    </div>
+    <div class="sf2-filter-group">
+      <label><i class="fas fa-users"></i> Section</label>
+      <select class="sf2-select" id="sf2-section">
+        <option value="">Select Section</option>
+      </select>
+    </div>
+    <div class="sf2-filter-group">
+      <label><i class="fas fa-calendar"></i> Month</label>
+      <select class="sf2-select" id="sf2-month">
+        <option value="1">January</option>
+        <option value="2">February</option>
+        <option value="3">March</option>
+        <option value="4">April</option>
+        <option value="5">May</option>
+        <option value="6">June</option>
+        <option value="7">July</option>
+        <option value="8">August</option>
+        <option value="9">September</option>
+        <option value="10">October</option>
+        <option value="11">November</option>
+        <option value="12">December</option>
+      </select>
+    </div>
+    <div class="sf2-filter-group">
+      <label><i class="fas fa-school"></i> School Year</label>
+      <input class="sf2-input" id="sf2-sy" placeholder="e.g. 2024-2025" style="min-width:130px;">
+    </div>
+    <div class="sf2-filter-group">
+      <label>&nbsp;</label>
+      <button class="sf2-load-btn" onclick="loadSF2Data()">
+        <i class="fas fa-sync-alt"></i> Load Data
+      </button>
+    </div>
+  </div>
+
+  <!-- DYNAMIC CONTENT -->
+  <div id="sf2-dynamic">
+    <div class="sf2-empty">
+      <i class="fas fa-list-ol"></i>
+      <h3>Select filters to load SF2 data</h3>
+      <p>Choose a grade level, section, and month then click <strong>Load Data</strong>.</p>
+    </div>
+  </div>
+
+</main>
+```
+
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+
+<div class="sf2-toast-container" id="toastContainer"></div>
+
+<script src="sf2.js"></script>
+
+<!-- PRINT STYLES -->
+
+<style>
+@media print {
+  .sf2-topbar,
+  .sf2-filter-bar,
+  .sf2-export-bar,
+  #themeBackground,
+  .sf2-toast-container { display: none !important; }
+  .sf2-content { padding: 0 !important; max-width: 100% !important; }
+  .sf2-chart-card { break-inside: avoid; }
+  .sf2-table-card { break-inside: avoid; }
+  body { background: #fff !important; color: #000 !important; }
+}
+</style>
+
+</body>
+</html>

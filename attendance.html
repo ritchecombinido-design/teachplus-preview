@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>TEACHPLUS — Attendance Module</title>
+
+<!-- Same fonts as dashboard -->
+
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fontawesome/css/all.min.css">
+
+<script src="dexie.js"></script>
+
+<script src="exceljs.min.js"></script>
+
+<script src="xlsx.full.min.js"></script>
+
+<!-- Apply theme immediately — no flash -->
+
+<script>
+  (function() {
+    try {
+      const t = localStorage.getItem('tp_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch(e) {}
+  })();
+</script>
+
+<!-- Dashboard design system (CSS variables + all shared components) -->
+
+<link rel="stylesheet" href="styles.css"/>
+<!-- Attendance-specific structural styles (layout, table, legend, matrix) -->
+<link rel="stylesheet" href="attendance.css"/>
+
+<!-- Cross-tab & cross-page theme sync:
+     Dashboard writes tp_theme to localStorage → storage event fires here instantly.
+     Works even when both tabs are open at the same time. -->
+
+<script>
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'tp_theme' && e.newValue) {
+      document.documentElement.setAttribute('data-theme', e.newValue);
+      // Update the theme indicator chip label if it exists
+      const el = document.getElementById('active-theme-name');
+      if (el) el.textContent = e.newValue.charAt(0).toUpperCase() + e.newValue.slice(1);
+      // Keep theme-option active state in sync (Settings page grid)
+      document.querySelectorAll('.theme-option').forEach(function(o) {
+        o.classList.toggle('active', o.dataset.theme === e.newValue);
+      });
+    }
+  });
+</script>
+
+<!-- Attendance Add-Learner action bar & wide modal styles -->
+
+<style>
+  /* Attendance page — action bar below matrix */
+  .att-action-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--hover);
+    border-radius: 0 0 10px 10px;
+  }
+  /* Learners page — Add Learner bar above table */
+  .lr-add-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--hover);
+    border-radius: 8px 8px 0 0;
+  }
+  .lr-context-label {
+    font-size: 12px;
+    color: var(--subtext);
+    font-weight: 500;
+  }
+  /* Wide modal for Add Learner form */
+  .modal-wide {
+    width: min(680px, 96vw);
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+  /* Scope info banner inside modal */
+  .al-scope-banner {
+    background: var(--hover);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--subtext);
+    margin-bottom: 14px;
+  }
+  .al-scope-banner strong { color: var(--text); }
+</style>
+
+</head>
+<body>
+
+<!-- Your page content above -->
+
+<!-- SIDEBAR -->
+
+<nav id="sidebar">
+  <div id="sidebar-toggle" onclick="toggleSidebar()"><i class="fas fa-chevron-left" id="toggle-icon"></i></div>
+  <div id="sidebar-logo">
+    <div class="logo-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+    <div class="logo-text">TEACHPLUS<span class="logo-sub">Attendance Module</span></div>
+  </div>
+  <div style="padding:8px;flex:1;overflow-y:auto;">
+    <div class="sidebar-section-label">MAIN MENU</div>
+    <a class="nav-item" data-page="import" onclick="showPage('import',this)">
+      <i class="fas fa-file-import"></i><span class="nav-label">SF1 Import</span>
+    </a>
+    <a class="nav-item" data-page="attendance" onclick="showPage('attendance',this)">
+      <i class="fas fa-calendar-check"></i><span class="nav-label">Attendance</span>
+    </a>
+    <a class="nav-item active" data-page="dashboard" onclick="showPage('dashboard',this)">
+      <i class="fas fa-chart-pie"></i><span class="nav-label">Dashboard</span>
+    </a>
+    <a class="nav-item" data-page="reports" onclick="showPage('reports',this)">
+      <i class="fas fa-chart-bar"></i><span class="nav-label">Reports &amp; Analytics</span>
+    </a>
+    <a class="nav-item" data-page="interventions" onclick="showPage('interventions',this)">
+      <i class="fas fa-hands-helping"></i><span class="nav-label">Interventions</span>
+    </a>
+    <div class="sidebar-section-label">SYSTEM</div>
+    <a class="nav-item" data-page="settings" onclick="showPage('settings',this)">
+      <i class="fas fa-cog"></i><span class="nav-label">Settings</span>
+    </a>
+    <a class="nav-item" onclick="goBackToDashboard()">
+      <i class="fas fa-arrow-left"></i>
+      <span class="nav-label">Back to Dashboard</span>
+    </a>
+  </div>
+
+</nav>
+
+<!-- MAIN -->
+
+<div id="main">
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <button style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:4px;display:none;" id="mobile-menu-btn" onclick="toggleMobileSidebar()">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div id="topbar-title">TEACHPLUS <span id="topbar-sub">Attendance System</span></div>
+    <div class="topbar-chip" id="theme-indicator" onclick="showPage('settings',document.querySelector('[data-page=settings]'))">
+      <i class="fas fa-palette"></i><span id="active-theme-name">Light</span>
+    </div>
+    <div class="topbar-chip"><i class="fas fa-wifi"></i> Offline</div>
+    <div class="topbar-chip"><i class="fas fa-clock"></i><span id="clock"></span></div>
+  </div>
+
+  <!-- CONTENT -->
+
+  <div id="content">
+
+```
+<!-- DASHBOARD PAGE -->
+<div class="page active" id="page-dashboard">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-chart-pie" style="color:var(--accent)"></i> Dashboard</div>
+    <div class="page-sub">Section attendance overview</div></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="refreshDashboard()"><i class="fas fa-rotate-right"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="loadDashboard()"><i class="fas fa-play"></i> Load Dashboard</button>
+    </div>
+  </div>
+  <div class="section-selector card">
+    <div class="card-title"><i class="fas fa-filter"></i> Section Filter</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">School Year</label>
+       <select class="form-control" id="dash-sy"></select></div>
+      <div class="form-group"><label class="form-label">Grade Level</label>
+        <select class="form-control" id="dash-grade" onchange="updateDashSections()"><option value="">Select Grade</option></select></div>
+      <div class="form-group"><label class="form-label">Section</label>
+        <select class="form-control" id="dash-section"><option value="">Select Section</option></select></div>
+    </div>
+  </div>
+  <div id="dash-output" style="display:none;">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon" style="background:#dcfce7;color:#16a34a;"><i class="fas fa-check-circle"></i></div>
+        <div><div class="stat-val" id="stat-present">0</div><div class="stat-lbl">Present Today</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#fee2e2;color:#dc2626;"><i class="fas fa-times-circle"></i></div>
+        <div><div class="stat-val" id="stat-absent">0</div><div class="stat-lbl">Absent Today</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#d97706;"><i class="fas fa-clock"></i></div>
+        <div><div class="stat-val" id="stat-late">0</div><div class="stat-lbl">Late Today</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#7c3aed;"><i class="fas fa-door-open"></i></div>
+        <div><div class="stat-val" id="stat-cutting">0</div><div class="stat-lbl">Cutting Today</div></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="card"><div class="card-title"><i class="fas fa-chart-line"></i> Monthly Trend</div>
+        <div id="dash-trend"></div></div>
+      <div class="card"><div class="card-title"><i class="fas fa-exclamation-triangle"></i> At-Risk Learners</div>
+        <div id="dash-atrisk"></div></div>
+    </div>
+    <div class="card mt-12"><div class="card-title"><i class="fas fa-th"></i> Attendance Heatmap</div>
+      <div id="dash-heatmap"></div></div>
+  </div>
+</div>
+
+<!-- ATTENDANCE PAGE -->
+<div class="page" id="page-attendance">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-calendar-check" style="color:var(--accent)"></i> Attendance</div>
+    <div class="page-sub">Click cells to cycle status</div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-secondary btn-sm" onclick="refreshAttSection()"><i class="fas fa-rotate-right"></i> Refresh</button>
+    </div>
+  </div>
+  <div class="section-selector card">
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group"><label class="form-label">School Year</label>
+      <select class="form-control" id="att-sy"></select></div>
+      <div class="form-group"><label class="form-label">Grade Level</label>
+        <select class="form-control" id="att-grade" onchange="updateAttSections()"><option value="">Select Grade</option></select></div>
+      <div class="form-group"><label class="form-label">Section</label>
+        <select class="form-control" id="att-section"><option value="">Select Section</option></select></div>
+      <div class="form-group" style="align-self:flex-end;">
+        <button class="btn btn-primary" onclick="loadAttendance()"><i class="fas fa-play"></i> Load Attendance</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary btn-sm" onclick="openAttAddLearner()" id="att-add-learner-btn">
+        <i class="fas fa-user-plus"></i> Add Learner to Section
+      </button>
+      <span style="font-size:12px;color:var(--subtext);margin-left:10px;">Select a grade &amp; section first, then load attendance before adding.</span>
+    </div>
+  </div>
+  <div id="att-output" style="display:none;">
+    <div class="month-tabs" id="month-tabs"></div>
+    <div class="att-header-info" id="att-header-info"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch swatch-present"></div> Present</div>
+      <div class="legend-item"><div class="legend-swatch swatch-absent"></div> Absent</div>
+      <div class="legend-item"><div class="legend-swatch swatch-late"></div> Late (top)</div>
+      <div class="legend-item"><div class="legend-swatch swatch-cutting"></div> Cutting (bottom)</div>
+      <div class="legend-item"><div class="legend-swatch swatch-excused"></div> Excused</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--hover);border:1px solid var(--border);"></div> Empty</div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div id="att-wrapper"><div id="att-matrix"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- REPORTS PAGE -->
+<div class="page" id="page-reports">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-chart-bar" style="color:var(--accent)"></i> Reports &amp; Analytics</div>
+    <div class="page-sub">Detailed attendance insights</div></div>
+    <button class="btn btn-secondary" onclick="refreshReports()"><i class="fas fa-rotate-right"></i> Refresh</button>
+  </div>
+  <div class="section-selector card">
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Grade Level</label>
+        <select class="form-control" id="rpt-grade" onchange="updateRptSections()"><option value="">Select Grade</option></select></div>
+      <div class="form-group"><label class="form-label">Section</label>
+        <select class="form-control" id="rpt-section"><option value="">Select Section</option></select></div>
+      <div class="form-group"><label class="form-label">Month</label>
+        <select class="form-control" id="rpt-month">
+          <option value="6">June</option><option value="7">July</option><option value="8">August</option>
+          <option value="9">September</option><option value="10">October</option><option value="11">November</option>
+          <option value="12">December</option><option value="1">January</option><option value="2">February</option>
+          <option value="3">March</option><option value="4">April</option><option value="5">May</option>
+        </select></div>
+      <div class="form-group" style="align-self:flex-end;">
+        <button class="btn btn-primary" onclick="loadReports()"><i class="fas fa-search"></i> Generate</button></div>
+    </div>
+  </div>
+  <div id="rpt-output"></div>
+</div>
+
+<!-- CALENDAR PAGE -->
+<div class="page" id="page-calendar">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-calendar" style="color:var(--accent)"></i> School Calendar</div>
+    <div class="page-sub">Mark holidays and suspensions</div></div>
+    <button class="btn btn-primary" onclick="openCalEventModal()"><i class="fas fa-plus"></i> Add Event</button>
+  </div>
+  <div class="card">
+    <div class="cal-nav">
+      <button class="btn btn-secondary btn-sm" onclick="prevMonth()"><i class="fas fa-chevron-left"></i></button>
+      <div class="cal-month-title" id="cal-title"></div>
+      <button class="btn btn-secondary btn-sm" onclick="nextMonth()"><i class="fas fa-chevron-right"></i> </button>
+    </div>
+    <div class="cal-grid" id="cal-headers"></div>
+    <div class="cal-grid" id="cal-body"></div>
+  </div>
+  <div class="card"><div class="card-title"><i class="fas fa-list"></i> Calendar Events</div>
+    <div id="cal-events-list"></div></div>
+</div>
+
+<!-- INTERVENTIONS PAGE -->
+<div class="page" id="page-interventions">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-hands-helping" style="color:var(--accent)"></i> Interventions</div>
+    <div class="page-sub">Track and manage learner interventions</div></div>
+    <button class="btn btn-secondary" onclick="refreshInterventions()"><i class="fas fa-rotate-right"></i> Refresh</button>
+  </div>
+  <div class="section-selector card">
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Grade Level</label>
+        <select class="form-control" id="int-grade" onchange="updateIntSections()"><option value="">Select Grade</option></select></div>
+      <div class="form-group"><label class="form-label">Section</label>
+        <select class="form-control" id="int-section" onchange="loadInterventions()"><option value="">Select Section</option></select></div>
+    </div>
+  </div>
+  <div id="int-list"></div>
+</div>
+
+<!-- IMPORT PAGE -->
+<div class="page" id="page-import">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-file-import" style="color:var(--accent)"></i> SF1 Import</div>
+    <div class="page-sub">Import DepEd School Form 1 (SF1) Excel files</div></div>
+    <button class="btn btn-secondary" onclick="refreshImport()"><i class="fas fa-rotate-right"></i> Refresh</button>
+  </div>
+  <div class="card">
+    <div class="card-title"><i class="fas fa-upload"></i> Upload SF1 File</div>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('sf1-file').click()">
+      <i class="fas fa-file-excel"></i>
+      <p style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px;">Drop SF1 Excel file here</p>
+      <p>or click to browse (.xlsx only)</p>
+```
+
+<div style="font-size:12px; color:#6b7280; margin-top:6px; line-height:1.4;">
+If upload fails, open the file in Excel first then save it as:<br>
+<strong>File → Save As → Excel Workbook (*.xlsx)</strong>
+</div>
+  <input type="file" id="sf1-file" accept=".xlsx,.xls" style="display:none;" onchange="handleSF1File(this)"/>
+        </div>
+        <div id="import-preview" style="margin-top:16px;display:none;"></div>
+      </div>
+      <div class="card"><div class="card-title"><i class="fas fa-info-circle"></i> Import Guidelines</div>
+        <ul style="font-size:13px;color:var(--subtext);line-height:2;padding-left:20px;">
+          <li>Supports DepEd official SF1 format (.xlsx only)</li>
+          <li>Auto-detects Region, Division, School ID, School Name, School Year</li>
+          <li>Dynamically locates LRN, Name, Sex, Grade, Section columns</li>
+          <li>Separates male and female learner groups automatically</li>
+          <li>Creates sections automatically if not yet existing</li>
+          <li>Saves all data offline using Dexie.js</li>
+        </ul>
+      </div>
+    </div>
+
+```
+<!-- SETTINGS PAGE -->
+<div class="page" id="page-settings">
+  <div class="page-header">
+    <div><div class="page-title"><i class="fas fa-cog" style="color:var(--accent)"></i> Settings</div>
+    <div class="page-sub">Configure TEACHPLUS Attendance Module</div></div>
+  </div>
+  <div class="card"><div class="card-title"><i class="fas fa-palette"></i> Theme</div>
+    <div class="theme-grid" id="theme-grid"></div>
+  </div>
+  <div class="card"><div class="card-title"><i class="fas fa-sliders-h"></i> Preferences</div>
+    <div class="setting-row">
+      <div><div class="setting-label">Auto-Save</div><div class="setting-desc">Instantly save every attendance click</div></div>
+      <label class="toggle"><input type="checkbox" id="tog-autosave" checked disabled/><span class="toggle-slider"></span></label>
+    </div>
+    <div class="setting-row">
+      <div><div class="setting-label">Theme Sync with Dashboard</div><div class="setting-desc">Automatically match the TEACHPLUS Dashboard theme</div></div>
+      <label class="toggle"><input type="checkbox" id="tog-theme-sync" checked onchange="saveSettings()"/><span class="toggle-slider"></span></label>
+    </div>
+    <div class="setting-row">
+      <div><div class="setting-label">Keyboard Shortcuts</div><div class="setting-desc">P=Present, A=Absent, L=Late, C=Cutting, E=Excused</div></div>
+      <label class="toggle"><input type="checkbox" id="tog-kbd" checked onchange="saveSettings()"/><span class="toggle-slider"></span></label>
+    </div>
+  </div>
+  <div class="card"><div class="card-title"><i class="fas fa-info-circle"></i> System Info</div>
+    <div id="sys-info" style="font-size:13px;color:var(--subtext);line-height:2.2;"></div>
+  </div>
+  <div class="card"><div class="card-title"><i class="fas fa-trash-alt"></i> Data Management</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-danger" onclick="clearAllData()"><i class="fas fa-trash"></i> Clear All Data</button>
+      <button class="btn btn-secondary" onclick="populateSampleData()"><i class="fas fa-database"></i> Load Sample Data</button>
+    </div>
+  </div>
+</div>
+```
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- MODALS -->
+
+<div class="modal-overlay" id="modal-addlearner">
+  <div class="modal modal-wide">
+    <div class="modal-header"><div class="modal-title"><i class="fas fa-user-plus"></i> Add Learner</div>
+      <span class="modal-close" onclick="closeModal('modal-addlearner')"><i class="fas fa-times"></i></span></div>
+    <!-- Scope info banner (shown only when opened from Attendance page) -->
+    <div id="al-modal-scope-info" class="al-scope-banner" style="display:none;"></div>
+    <!-- Row 1: LRN -->
+    <div class="form-group"><label class="form-label">LRN <span style="color:var(--subtext);font-weight:400;">(12-digit Learner Reference Number)</span></label>
+      <input class="form-control" id="al-lrn" placeholder="e.g. 123456789012" maxlength="12"/></div>
+    <!-- Row 2: Name fields -->
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Last Name <span style="color:var(--danger);">*</span></label>
+        <input class="form-control" id="al-lname" placeholder="Dela Cruz"/></div>
+      <div class="form-group"><label class="form-label">First Name <span style="color:var(--danger);">*</span></label>
+        <input class="form-control" id="al-fname" placeholder="Juan"/></div>
+      <div class="form-group"><label class="form-label">Middle Name</label>
+        <input class="form-control" id="al-mname" placeholder="Santos"/></div>
+      <div class="form-group" style="max-width:110px;"><label class="form-label">Ext. Name</label>
+        <input class="form-control" id="al-extname" placeholder="Jr. / III"/></div>
+    </div>
+    <!-- Row 3: Sex, Birthdate, Age -->
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Sex</label>
+        <select class="form-control" id="al-sex"><option value="M">Male</option><option value="F">Female</option></select></div>
+      <div class="form-group"><label class="form-label">Birthdate</label>
+        <input class="form-control" type="date" id="al-birthdate"/></div>
+      <div class="form-group" style="max-width:90px;"><label class="form-label">Age</label>
+        <input class="form-control" id="al-age" type="number" min="1" max="99" placeholder="12"/></div>
+    </div>
+    <!-- Row 4: Address -->
+    <div class="form-group"><label class="form-label">Address</label>
+      <input class="form-control" id="al-address" placeholder="Purok / Barangay / City / Province"/></div>
+    <!-- Row 5: Guardian & Contact -->
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Parent / Guardian</label>
+        <input class="form-control" id="al-guardian" placeholder="Full name of parent or guardian"/></div>
+      <div class="form-group"><label class="form-label">Contact Number</label>
+        <input class="form-control" id="al-contact" placeholder="09XXXXXXXXX"/></div>
+    </div>
+    <!-- Row 6: Grade & Section (hidden when scoped from Attendance page) -->
+    <div class="form-row" id="al-grade-row">
+      <div class="form-group"><label class="form-label">Grade Level <span style="color:var(--danger);">*</span></label>
+        <select class="form-control" id="al-grade">
+          <option value="7">Grade 7</option><option value="8">Grade 8</option>
+          <option value="9">Grade 9</option><option value="10">Grade 10</option>
+          <option value="11">Grade 11</option><option value="12">Grade 12</option>
+        </select></div>
+      <div class="form-group" id="al-section-row"><label class="form-label">Section <span style="color:var(--danger);">*</span></label>
+        <input class="form-control" id="al-section-input" placeholder="e.g. Sampaguita"/></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-addlearner')">Cancel</button>
+      <button class="btn btn-primary" id="al-save-btn"><i class="fas fa-save"></i> Save Learner</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-calEvent">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Add Calendar Event</div>
+      <span class="modal-close" onclick="closeModal('modal-calEvent')"><i class="fas fa-times"></i></span></div>
+    <div class="form-group"><label class="form-label">Event Type</label>
+      <select class="form-control" id="ce-type">
+        <option value="holiday">Holiday</option>
+        <option value="suspended">Suspended Classes</option>
+        <option value="special">Special Event</option>
+      </select></div>
+    <div class="form-group"><label class="form-label">Date</label><input class="form-control" type="date" id="ce-date"/></div>
+    <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="ce-desc" placeholder="e.g. Rizal Day"/></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-calEvent')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCalEvent()"><i class="fas fa-save"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-intervention">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="int-modal-title">Intervention Log</div>
+      <span class="modal-close" onclick="closeModal('modal-intervention')"><i class="fas fa-times"></i></span></div>
+    <div id="int-modal-logs" style="margin-bottom:16px;"></div>
+    <div class="form-group"><label class="form-label">Add Entry</label>
+      <textarea class="form-control" id="int-new-entry" rows="3" placeholder="Enter intervention note..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-intervention')">Close</button>
+      <button class="btn btn-primary" onclick="saveIntEntry()"><i class="fas fa-plus"></i> Add Entry</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="attendance.js"></script>
+
+</body>
+</html>
