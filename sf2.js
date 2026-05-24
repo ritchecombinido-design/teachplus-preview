@@ -261,7 +261,7 @@ async function loadSF2Data() {
       return max;
     }
 
-    // Per-day totals
+    // Per-day totals — keyed by day number (e.g. 1, 2, 3…) for export mapping
     function dayTotals(group) {
       const totals = {};
       schoolDays.forEach(d => {
@@ -271,7 +271,7 @@ async function loadSF2Data() {
           const st = attMap[`${l.id}_${dt}`] || 'present';
           if (st === 'present') p++;
         });
-        totals[dt] = p;
+        totals[d] = p; // keyed by day number, not date string
       });
       return totals;
     }
@@ -299,9 +299,17 @@ async function loadSF2Data() {
     const totalCutting = allStats.reduce((s,l) => s + l.cutting, 0);
 
     const schoolDayCount = schoolDays.length;
-    const ada  = schoolDayCount > 0 ? (totalMalePresent + totalFemalePresent) / (totalAll * schoolDayCount) * 100 : 0;
-    const adaM = (totalMale > 0 && schoolDayCount > 0) ? totalMalePresent   / (totalMale   * schoolDayCount) * 100 : 0;
-    const adaF = (totalFemale > 0 && schoolDayCount > 0) ? totalFemalePresent / (totalFemale * schoolDayCount) * 100 : 0;
+
+    // Average Daily Attendance = total present for month / number of school days
+    // Result is the average number of learners present per day (NOT a percentage)
+    const adaM = schoolDayCount > 0 ? totalMalePresent   / schoolDayCount : 0;
+    const adaF = schoolDayCount > 0 ? totalFemalePresent / schoolDayCount : 0;
+    const ada  = schoolDayCount > 0 ? (totalMalePresent + totalFemalePresent) / schoolDayCount : 0;
+
+    // Attendance percentage (separate from ADA)
+    const pctM = (totalMale   > 0 && schoolDayCount > 0) ? (totalMalePresent   / (totalMale   * schoolDayCount)) * 100 : 0;
+    const pctF = (totalFemale > 0 && schoolDayCount > 0) ? (totalFemalePresent / (totalFemale * schoolDayCount)) * 100 : 0;
+    const pctT = (totalAll    > 0 && schoolDayCount > 0) ? ((totalMalePresent + totalFemalePresent) / (totalAll * schoolDayCount)) * 100 : 0;
 
     const maleConsec5   = maleStats.filter(l => l.consec >= 5).length;
     const femaleConsec5 = femaleStats.filter(l => l.consec >= 5).length;
@@ -312,13 +320,14 @@ async function loadSF2Data() {
       grade, section, month, schoolYear, schoolName, schoolId,
       teacherName, principal,
       males: maleStats, females: femaleStats,
-      schoolDays, year,
+      schoolDays, schoolDayCount, year,
       maleDayTotals, femaleDayTotals,
       totalMale, totalFemale, totalAll,
       totalMalePresent, totalMaleAbsent,
       totalFemalePresent, totalFemaleAbsent,
       totalPresent, totalAbsent, totalLate, totalCutting,
       ada, adaM, adaF,
+      pctM, pctF, pctT,
       maleConsec5, femaleConsec5, totalConsec5,
       attMap
     };
@@ -510,15 +519,15 @@ function renderADACard(d) {
       <h4><i class="fas fa-chart-line" style="color:var(--green)"></i> Average Daily Attendance</h4>
       <div class="sf2-summary-row">
         <span class="label"><i class="fas fa-mars" style="color:#3b82f6;font-size:.75rem"></i> Male ADA</span>
-        <span class="value">${d.adaM.toFixed(2)}%</span>
+        <span class="value">${d.adaM.toFixed(2)}</span>
       </div>
       <div class="sf2-summary-row">
         <span class="label"><i class="fas fa-venus" style="color:#db2777;font-size:.75rem"></i> Female ADA</span>
-        <span class="value">${d.adaF.toFixed(2)}%</span>
+        <span class="value">${d.adaF.toFixed(2)}</span>
       </div>
       <div class="sf2-summary-row">
         <span class="label"><i class="fas fa-users" style="color:var(--accent);font-size:.75rem"></i> Total ADA</span>
-        <span class="value">${d.ada.toFixed(2)}%</span>
+        <span class="value">${d.ada.toFixed(2)}</span>
       </div>
       <div class="sf2-summary-row">
         <span class="label">School Days</span>
@@ -665,8 +674,7 @@ function renderDailyTotalsTable(d) {
         <tr>
           <td style="font-weight:600;color:#3b82f6;"><i class="fas fa-mars"></i> Male Present</td>
           ${days.map(day => {
-            const dt = padDate(d.year, d.month, day);
-            return `<td style="text-align:center;font-weight:600;">${d.maleDayTotals[dt]||0}</td>`;
+            return `<td style="text-align:center;font-weight:600;">${d.maleDayTotals[day]||0}</td>`;
           }).join('')}
           ${d.schoolDays.length > 20 ? '<td>…</td>' : ''}
           <td style="text-align:center;font-weight:700;color:#3b82f6;">${d.totalMalePresent}</td>
@@ -674,8 +682,7 @@ function renderDailyTotalsTable(d) {
         <tr>
           <td style="font-weight:600;color:#db2777;"><i class="fas fa-venus"></i> Female Present</td>
           ${days.map(day => {
-            const dt = padDate(d.year, d.month, day);
-            return `<td style="text-align:center;font-weight:600;">${d.femaleDayTotals[dt]||0}</td>`;
+            return `<td style="text-align:center;font-weight:600;">${d.femaleDayTotals[day]||0}</td>`;
           }).join('')}
           ${d.schoolDays.length > 20 ? '<td>…</td>' : ''}
           <td style="text-align:center;font-weight:700;color:#db2777;">${d.totalFemalePresent}</td>
@@ -683,8 +690,7 @@ function renderDailyTotalsTable(d) {
         <tr style="background:var(--surface2);">
           <td style="font-weight:700;"><i class="fas fa-users"></i> Total Present</td>
           ${days.map(day => {
-            const dt = padDate(d.year, d.month, day);
-            const t = (d.maleDayTotals[dt]||0) + (d.femaleDayTotals[dt]||0);
+            const t = (d.maleDayTotals[day]||0) + (d.femaleDayTotals[day]||0);
             return `<td style="text-align:center;font-weight:700;">${t}</td>`;
           }).join('')}
           ${d.schoolDays.length > 20 ? '<td>…</td>' : ''}
@@ -718,8 +724,7 @@ function renderChartDaily(d) {
   const { gridColor, textColor } = chartColors();
   const labels = d.schoolDays.map(day => `${MONTHS[d.month].slice(0,3)} ${day}`);
   const presentPerDay = d.schoolDays.map(day => {
-    const dt = padDate(d.year, d.month, day);
-    return (d.maleDayTotals[dt]||0) + (d.femaleDayTotals[dt]||0);
+    return (d.maleDayTotals[day]||0) + (d.femaleDayTotals[day]||0);
   });
   charts['daily'] = new Chart(ctx, {
     type: 'bar',
@@ -777,8 +782,8 @@ function renderChartGender(d) {
   if (!ctx) return;
   const { gridColor, textColor } = chartColors();
   const labels = d.schoolDays.map(day => day.toString());
-  const maleData   = d.schoolDays.map(day => d.maleDayTotals[padDate(d.year, d.month, day)]   || 0);
-  const femaleData = d.schoolDays.map(day => d.femaleDayTotals[padDate(d.year, d.month, day)] || 0);
+  const maleData   = d.schoolDays.map(day => d.maleDayTotals[day]   || 0);
+  const femaleData = d.schoolDays.map(day => d.femaleDayTotals[day] || 0);
   charts['gender'] = new Chart(ctx, {
     type: 'line',
     data: {
@@ -823,7 +828,7 @@ function renderHeatmap(d) {
       <div class="heatmap-label">Wk ${wi+1}</div>`;
     week.forEach(day => {
       const dt = padDate(d.year, d.month, day);
-      const p = (d.maleDayTotals[dt]||0) + (d.femaleDayTotals[dt]||0);
+      const p = (d.maleDayTotals[day]||0) + (d.femaleDayTotals[day]||0);
       const pct = maxPresent > 0 ? p/maxPresent : 0;
       const bg = pct >= .9 ? '#0d9488' : pct >= .75 ? '#d97706' : pct >= .5 ? '#e11d48' : '#991b1b';
       const opacity = 0.4 + pct * 0.6;
@@ -981,7 +986,9 @@ async function exportToXLSX() {
   // ─────────────────────────────
   d.schoolDays.forEach(day => {
     const col = dayColMap[day];
-    if (col) push(`${col}108`, d.maleDayTotals[day] || 0);
+    if (!col) return;
+    const dailyMalePresent = d.maleDayTotals[day] || 0;
+    push(`${col}108`, dailyMalePresent);
   });
 
   push("AM108", d.totalMaleAbsent);
@@ -1015,7 +1022,9 @@ async function exportToXLSX() {
   // ─────────────────────────────
   d.schoolDays.forEach(day => {
     const col = dayColMap[day];
-    if (col) push(`${col}209`, d.femaleDayTotals[day] || 0);
+    if (!col) return;
+    const dailyFemalePresent = d.femaleDayTotals[day] || 0;
+    push(`${col}209`, dailyFemalePresent);
   });
 
   push("AM209", d.totalFemaleAbsent);
@@ -1028,11 +1037,11 @@ async function exportToXLSX() {
     const col = dayColMap[day];
     if (!col) return;
 
-    const total =
-      (d.maleDayTotals[day] || 0) +
-      (d.femaleDayTotals[day] || 0);
+    const dailyMalePresent   = d.maleDayTotals[day]   || 0;
+    const dailyFemalePresent = d.femaleDayTotals[day] || 0;
+    const dailyTotalPresent  = dailyMalePresent + dailyFemalePresent;
 
-    push(`${col}210`, total);
+    push(`${col}210`, dailyTotalPresent);
   });
 
   push("AM210", d.totalAbsent);
@@ -1058,18 +1067,32 @@ async function exportToXLSX() {
   push("AT221", d.totalAll ? 100 : 0);
 
   // ─────────────────────────────
-  // ADA
+  // TOTAL SCHOOL DAYS & MONTH
   // ─────────────────────────────
-  push("AR223", d.adaM);
-  push("AS223", d.adaF);
-  push("AT223", d.ada);
+  const totalSchoolDays = d.schoolDays.length;
+  push("AQ211", totalSchoolDays);
+  push("AN211", MONTHS[d.month]);
+
+  // ─────────────────────────────
+  // ADA (Average Daily Attendance — count, not percentage)
+  // maleADA  = total male present for month   / number of school days
+  // femaleADA = total female present for month / number of school days
+  // totalADA  = total present for month        / number of school days
+  // ─────────────────────────────
+  const maleADA   = totalSchoolDays > 0 ? d.totalMalePresent   / totalSchoolDays : 0;
+  const femaleADA = totalSchoolDays > 0 ? d.totalFemalePresent / totalSchoolDays : 0;
+  const totalADA  = totalSchoolDays > 0 ? d.totalPresent       / totalSchoolDays : 0;
+
+  push("AR223", parseFloat(maleADA.toFixed(3)));
+  push("AS223", parseFloat(femaleADA.toFixed(3)));
+  push("AT223", parseFloat(totalADA.toFixed(3)));
 
   // ─────────────────────────────
   // ATTENDANCE %
   // ─────────────────────────────
-  push("AR225", d.pctM);
-  push("AS225", d.pctF);
-  push("AT225", d.pctT);
+  push("AR225", parseFloat(d.pctM.toFixed(3)));
+  push("AS225", parseFloat(d.pctF.toFixed(3)));
+  push("AT225", parseFloat(d.pctT.toFixed(3)));
 
   // ─────────────────────────────
   // CONSECUTIVE ABSENCE
@@ -1170,5 +1193,3 @@ async function init() {
 }
 
 init();
-
-
